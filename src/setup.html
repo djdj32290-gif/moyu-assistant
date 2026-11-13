@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>连接摸鱼助手</title><link rel="stylesheet" href="setup.css"><link rel="icon" href="icons/48.png"></head><body><main>
+<h1><img src="icons/48.png" width="40" height="40" alt="">连接摸鱼助手</h1>
+<p><span id="setup-light" class="connection-light" role="img" aria-label="未连接，红灯" data-connected="false"></span>插件已加载。完成配对与资料同步后，两边亮绿灯。</p>
+<section aria-label="首次配对">
+<div class="actions"><button id="pair" class="primary" type="button">配对并授权</button><button id="launch" type="button" hidden>返回桌面软件</button></div>
+<p id="setup-status" role="status" aria-live="polite">先在 EXE 完成两步引导，显示进入配对状态后，再点这里的“配对并授权”。浏览器可能分别询问网页访问和打开软件，请按提示确认。</p>
+</section>
+<details id="help"><summary>没有连接成功 / 移动与移除</summary>
+<p>请先解压整个免安装包，运行“摸鱼助手.exe”。移动前关闭浏览器、主面板和视频，再移动整个文件夹；新位置运行后重新加载插件并配对。资料库需一起保留。</p>
+<p>没有自动打开软件：重新点“打开软件完成配对”，并允许浏览器打开“摸鱼助手”。取消后可以重试，不用复制插件 ID。</p>
+<p>已有旧插件：保留原插件和 ID，不要重复安装或先卸载。可用新版插件文件覆盖原目录，重新加载后在这里连接，旧数据同步成功后再整理目录。</p>
+<p>红灯点击插件图标会打开本配对页；绿灯点击会启动或唤出同一个软件窗口。移动后运行新位置的 EXE，点“配对浏览器插件”重试；不要只移动 EXE。登记若被系统阻止，会如实提示，不提权或修改安全策略。</p>
+<div class="actions"><button id="authorize" type="button">重新授权网页访问</button></div>
+<p id="help-status" role="status"></p>
+</details>
+</main><dialog id="pair-success" aria-labelledby="success-title" aria-describedby="success-message"><h2 id="success-title">配对成功</h2><p id="success-message"></p><div class="actions"><button id="success-close" type="button" autofocus>确认，关闭当前网页</button></div></dialog><script src="panel.js"></script><script src="native-settings.js"></script><script src="setup.js"></script>
+</body></html>

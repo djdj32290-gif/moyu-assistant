@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WixLocalization xmlns="http://schemas.microsoft.com/wix/2006/localization" Culture="zh-cn" Codepage="936">
+  <String Id="WelcomeDlgDescription">安装点选缩放软件，附带浏览器插件。仅为当前 Windows 用户安装；已有插件请保留原 ID。</String>
+  <String Id="InstallDirDlgDescription">请选择非 C 盘目录。视频资料与缓存也会保存在这里，默认位于 D 盘。</String>
+  <String Id="ExitDialogDescription">打开桌面“点选缩放”，点击“安装浏览器插件”。加载插件后，在准备页点击“配对并授权”，按浏览器提示确认，以后自动连接。</String>
+</WixLocalization>

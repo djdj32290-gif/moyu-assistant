@@ -1,0 +1,28 @@
+from pathlib import Path
+root=Path(__file__).resolve().parents[2]
+def edit(name,old,new):
+ p=root/name;s=p.read_text(encoding='utf-8');assert old in s,(name,old[:70]);p.write_text(s.replace(old,new),encoding='utf-8')
+edit('src/video-common.js','  function candidate(input)', '''  const previewSizeKey="point-resize:hover-size:v1";
+  function previewScale(value){if(typeof value!=="number"||!Number.isFinite(value)||value<.5||value>3)throw new Error("预览尺寸无效。");return Math.round(value*100)/100;}
+  function candidate(input)''')
+edit('src/video-common.js','{ key, viewKey, previewKey,','{ key, viewKey, previewKey, previewSizeKey, previewScale,')
+edit('src/backup.js','      } else if (key === positionKey)', '''      } else if (key === PointResizeVideoData.previewSizeKey) {
+        if(!object(value)||Object.keys(value).length!==1)fail("预览尺寸无效。");
+        result[key]={scale:PointResizeVideoData.previewScale(value.scale)};
+      } else if (key === positionKey)''')
+edit('src/backup.js','key === PointResizeVideoData.previewKey || key === positionKey','key === PointResizeVideoData.previewKey || key === PointResizeVideoData.previewSizeKey || key === positionKey')
+edit('src/library-api.js','      if(type==="POINT_RESIZE_HOVER_SET")', '      if(type==="POINT_RESIZE_HOVER_SIZE"){await transport({action:"hover-size",scale:D.previewScale(message.scale)});return {ok:true};}\n      if(type==="POINT_RESIZE_HOVER_SET")')
+for name in ['src/video-background.js','src/desktop/panel-native.js']:
+ edit(name,'POINT_RESIZE_HOVER_SET$','POINT_RESIZE_HOVER_(?:SET|SIZE)$')
+edit('src/video-background.js','  if(sender.id===chrome.runtime.id&&message?.type==="POINT_RESIZE_HOVER_SET")', '  if(sender.id===chrome.runtime.id&&message?.type==="POINT_RESIZE_HOVER_SIZE"){const operation=videoWrites.then(async()=>{const scale=VQ.previewScale(message.scale);await chrome.storage.local.set({[VQ.previewSizeKey]:{scale}});return {ok:true};});videoWrites=operation.catch(()=>{});return operation;}\n  if(sender.id===chrome.runtime.id&&message?.type==="POINT_RESIZE_HOVER_SET")')
+edit('src/desktop/LibraryStore.cs','    static string Folder', '    public const string PreviewSizeKey = "point-resize:hover-size:v1";\n    static string Folder')
+edit('src/desktop/LibraryStore.cs','key==QueueKey || key==ViewKey || key==PreviewKey','key==QueueKey || key==ViewKey || key==PreviewKey || key==PreviewSizeKey')
+edit('src/desktop/LibraryStore.cs','            else if(pair.Key==PreviewKey)', '            else if(pair.Key==PreviewSizeKey){var size=Obj(pair.Value);if(size.Count!=1||!size.ContainsKey("scale")||!ValidPreviewScale(size["scale"]))throw new InvalidDataException("预览尺寸无效。");}\n            else if(pair.Key==PreviewKey)')
+edit('src/desktop/LibraryStore.cs','    static void Validate(Dictionary', '    static bool ValidPreviewScale(object value){if(!(value is int)&&!(value is long)&&!(value is double)&&!(value is decimal))return false;double scale=Convert.ToDouble(value);return !Double.IsNaN(scale)&&!Double.IsInfinity(scale)&&scale>=.5&&scale<=3;}\n    static void Validate(Dictionary')
+edit('src/desktop/LibraryStore.cs','        } else if(action=="hover-preview")', '        } else if(action=="hover-size"){if(!m.ContainsKey("scale")||!ValidPreviewScale(m["scale"]))throw new InvalidDataException("预览尺寸无效。");data[PreviewSizeKey]=new Dictionary<string,object>{{"scale",m["scale"]}};\n        } else if(action=="hover-preview")')
+edit('src/panel.js',"  const PREVIEW_KEY='point-resize:hover-preview:v1';", "  const PREVIEW_KEY='point-resize:hover-preview:v1',PREVIEW_SIZE_KEY='point-resize:hover-size:v1';\n  const previewScale=value=>typeof value==='number'&&Number.isFinite(value)?Math.max(.5,Math.min(3,Math.round(value*100)/100)):1;")
+edit('src/panel.js','    .hover-bubble p{', '    .hover-image-frame{display:flex;align-items:center;justify-content:center}.hover-image-frame img{width:100%;height:100%;max-width:none;max-height:none;object-fit:contain}\n    .hover-bubble p{')
+edit('src/panel.js','closePreview, previewImages:true };','closePreview, previewImages:true, previewScale:1, previewScalePending:null };')
+edit('src/panel.js',"chrome.storage.local.get(previewKey).then(data=>{$('hover-images').checked=ui.previewImages=data[previewKey]?.images!==false;})", "chrome.storage.local.get([previewKey,PREVIEW_SIZE_KEY]).then(data=>{$('hover-images').checked=ui.previewImages=data[previewKey]?.images!==false;if(ui.previewScalePending===null)ui.previewScale=previewScale(data[PREVIEW_SIZE_KEY]?.scale);ui.root.dispatchEvent(new Event('preview-size'));})")
+edit('src/panel.js',"chrome.storage.onChanged.addListener((changes,area)=>{if(area==='local'&&changes[previewKey])$('hover-images').checked=ui.previewImages=changes[previewKey].newValue?.images!==false;});", "chrome.storage.onChanged.addListener((changes,area)=>{if(area!=='local')return;if(changes[previewKey])$('hover-images').checked=ui.previewImages=changes[previewKey].newValue?.images!==false;if(changes[PREVIEW_SIZE_KEY]){const scale=previewScale(changes[PREVIEW_SIZE_KEY].newValue?.scale);if(ui.previewScalePending===null||ui.previewScalePending===scale){ui.previewScale=scale;ui.previewScalePending=null;ui.root.dispatchEvent(new Event('preview-size'));}}});\n    ui.savePreviewScale=async scale=>{const result=chrome.runtime.id?await chrome.runtime.sendMessage({type:'POINT_RESIZE_HOVER_SIZE',scale}):await chrome.storage.local.set({[PREVIEW_SIZE_KEY]:{scale}}).then(()=>({ok:true}));if(!result?.ok)throw new Error(result?.error||'预览尺寸未能保存。');if(ui.previewScalePending===scale)ui.previewScalePending=null;};")
+print('Added canonical preview zoom preference and common frame styles')

@@ -1,0 +1,13 @@
+const fs=require('fs'),path=require('path'),assert=require('assert/strict');
+const {chromium}=require('C:/Users/cx/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+const root=path.resolve(__dirname,'../..'),run=path.join(__dirname,'folder-drop-'+Date.now()),plugin=path.join(run,'plugin');fs.mkdirSync(run,{recursive:true});fs.cpSync(path.join(root,'outputs/点选缩放视频助手/浏览器插件/点选缩放'),plugin,{recursive:true});
+const native=path.join(plugin,'video-native.js');fs.writeFileSync(native,fs.readFileSync(native,'utf8').replace('"com.pointresize.video"','"com.pointresize.folderdroptest"'));
+const result={scope:'Real Chromium extension-management page in an independent D-drive test profile, CDP folder drag events; no existing Chrome/Edge profile or Windows installer used.',run,passed:false};let context;
+(async()=>{try{
+ const temp=path.join(run,'temp');fs.mkdirSync(temp);context=await chromium.launchPersistentContext(path.join(run,'browser'),{executablePath:'C:/Users/cx/AppData/Local/ms-playwright/chromium-1234/chrome-win64/chrome.exe',headless:false,viewport:{width:1100,height:850},env:{...process.env,TEMP:temp,TMP:temp},ignoreDefaultArgs:['--disable-extensions'],args:['--no-first-run','--disable-background-networking']});
+ const page=context.pages()[0];await page.goto('chrome://extensions/');const mode=page.locator('#devMode');await mode.waitFor();if(await mode.getAttribute('aria-pressed')!=='true')await mode.click();
+ const cdp=await context.newCDPSession(page);const data={items:[],files:[plugin],dragOperationsMask:1};for(const type of ['dragEnter','dragOver','drop'])await cdp.send('Input.dispatchDragEvent',{type,x:450,y:350,data});
+ const end=Date.now()+15000;let setup;while(Date.now()<end){setup=context.pages().find(p=>p.url().endsWith('/setup.html'));if(setup)break;await new Promise(r=>setTimeout(r,150));}
+ assert(setup,'Folder drop did not load the plugin and show preparation');await setup.locator('#pair').waitFor();assert.equal(context.serviceWorkers().length,1);result.passed=true;result.extensionId=setup.url().split('/')[2];await setup.screenshot({path:path.join(root,'outputs/插件拖入后配对页-0.17.1.png')});console.log('PASS Real folder drop loads the plugin and automatically opens preparation in isolated Chromium');
+}catch(error){result.error=error.stack;console.error(error.stack);process.exitCode=1;try{await context.pages()[0].screenshot({path:path.join(run,'failure.png')});console.log((await context.pages()[0].locator('body').innerText()).slice(0,1500));}catch{}}
+finally{if(context)await context.close();fs.writeFileSync(path.join(__dirname,'folder-drop-verification.json'),JSON.stringify(result,null,2));}})();

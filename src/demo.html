@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>摸鱼助手 · 体验页</title><link rel="stylesheet" href="demo.css"><link rel="icon" href="icons/48.png"></head>
+<body>
+  <header class="nav"><div class="logo"><img src="icons/48.png" width="28" height="28" alt="">摸鱼助手<span>体验页</span></div><button id="start-demo">打开调整面板 ↗</button></header>
+  <main>
+    <div class="intro"><span class="kicker">你的网页，你来定。</span><h1>图片小一点，阅读轻松一点。</h1><p>鼠标移到下方图片上，点击红框，再拖动面板中的大小滑杆。</p></div>
+    <div class="reader-shell">
+      <div class="visual-block" data-demo="image-container">
+        <div class="visual-inner"><img class="landscape" src="landscape.svg" alt="层叠的青绿色山峦与一轮落日"></div>
+        <div class="interaction-layer" aria-label="图片交互层"></div>
+        <span class="image-caption">山野来信 / 01</span>
+      </div>
+      <article class="reading"><div class="article-meta">WEEKEND JOURNAL <span>阅读 3 分钟</span></div><h2>留一点时间，<br>看看远处。</h2><p class="lead">把画面缩小，把注意力还给文字。</p><p>有时候，我们只是想安静地读一点东西。图片不必占满屏幕，文字也不必小得费力。</p><p>在右侧面板点“选择网页上的内容”，将鼠标移到左边图片上。看到红框后点击，即可用滑杆调整整块图片区的大小。</p><div class="article-note">试试选中这一段文字，也可以直接调整字号。</div><div class="article-footer"><span>本地演示 · 无需联网</span><span>01 / 03</span></div></article>
+    </div>
+    <section class="more"><div><span class="kicker">再试一下</span><h2>视频也能用同一根滑杆。</h2><p>下方是带交互覆盖层的视频区域。先点击面板中的重新选择，再选视频。</p></div><div class="video-block" data-demo="video-container"><video controls muted playsinline poster="landscape.svg" aria-label="演示视频区域"></video><div class="video-layer"></div><span class="video-badge">VIDEO · 大小可调</span></div></section>
+    <section class="samples"><h2>同类图片，一起调整。</h2><p>选中一张，默认一起调整；其他匹配图片会显示红色虚线框。</p><div class="sample-grid"><div class="sample-card"><img src="landscape.svg" alt="山峦示例一"></div><div class="sample-card"><img src="landscape.svg" alt="山峦示例二"></div><div class="sample-card"><img src="landscape.svg" alt="山峦示例三"></div></div></section>
+    <section class="samples"><h2>图片与外层区域，分别调整。</h2><p>选图片后缩到 50%，再扩大范围调整外层，最后回第 1 层恢复 100%。</p><div id="nested-example" style="width:600px;height:400px;background:#fff;border:1px solid #dce4dc"><div id="nested-image" style="width:240px;height:180px"><img src="landscape.svg" alt="嵌套图片" style="display:block;width:100%;height:100%;object-fit:cover"></div><p>外层区域有自己的宽高，层级切换不会丢掉图片的调整。</p></div></section>
+    <section class="samples"><h2>混排文字也能单独选。</h2><div id="mixed-copy" style="font-size:16px;background:white;padding:16px">精细选择第一行文字<br>第二行文字保持原样<br><img src="landscape.svg" alt="文字旁的图片" width="120" height="90"></div></section>
+    <footer class="page-footer">这是本地体验页。安装扩展后，可在你启用的普通网站使用同样的操作。</footer>
+  </main>
+  <script src="demo-boot.js"></script><script src="picker.js"></script><script src="video-common.js"></script><script src="backup.js"></script><script src="video-page.js"></script><script src="video-player.js"></script><script src="panel.js"></script><script src="native-settings.js"></script><script src="content.js"></script><script src="demo-start.js"></script>
+</body></html>

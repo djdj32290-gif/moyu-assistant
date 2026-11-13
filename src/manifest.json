@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "摸鱼助手",
+  "version": "0.18.8",
+  "description": "点选网页内容调整大小并按网站保存；收藏网页视频，在跨应用小窗中观看。",
+  "minimum_chrome_version": "120",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "nativeMessaging"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*",
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "摸鱼助手 · 打开软件"
+  },
+  "icons": {
+    "16": "icons/16.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  }
+}

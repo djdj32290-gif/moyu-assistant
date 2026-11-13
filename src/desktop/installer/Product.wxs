@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="$(var.ProductCode)" Name="点选缩放" Language="2052" Codepage="936"
+           Version="$(var.Version)" Manufacturer="点选缩放" UpgradeCode="B6404434-5342-4C9F-95A5-6B54E55D233D">
+    <Package InstallerVersion="500" Compressed="yes" Platform="x64" InstallScope="perUser"
+             InstallPrivileges="limited" SummaryCodepage="936" Description="点选缩放视频助手：当前用户安装" />
+    <MediaTemplate EmbedCab="yes" />
+    <MajorUpgrade DowngradeErrorMessage="已经安装更新版本的点选缩放视频助手。" Schedule="afterInstallInitialize" />
+    <Property Id="ARPCOMMENTS" Value="仅当前用户使用；资料库和缓存保存在安装目录。卸载保留资料库与导出文件。" />
+    <Property Id="INSTALLFOLDER" Secure="yes">
+      <RegistrySearch Id="PreviousInstallDir" Root="HKCU" Key="Software\PointResize\VideoHelper"
+                      Name="InstallLocation" Type="raw" Win64="yes" />
+    </Property>
+    <SetProperty Id="INSTALLFOLDER" Value="D:\点选缩放\[LogonUser]\" Before="CostInitialize" Sequence="both">NOT INSTALLFOLDER</SetProperty>
+    <Property Id="INSTALLSOURCE" Secure="yes" />
+    <SetProperty Id="INSTALLSOURCE" Value="[OriginalDatabase]" Before="CostInitialize" Sequence="both" />
+    <PropertyRef Id="NETFRAMEWORK45" />
+    <Property Id="WINDOWSMAJOR">
+      <RegistrySearch Id="WindowsMajorVersion" Root="HKLM" Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion"
+                      Name="CurrentMajorVersionNumber" Type="raw" Win64="yes" />
+    </Property>
+    <Condition Message="此助手需要 64 位 Windows 10 / 11。">Installed OR (VersionNT64 AND WINDOWSMAJOR &gt;= "#10")</Condition>
+    <Condition Message="请先安装 Microsoft .NET Framework 4.6.2 或更高版本，再安装助手。">Installed OR NETFRAMEWORK45 &gt;= "#394802"</Condition>
+    <CustomAction Id="RejectCDrive" Error="请选择 D 盘或其他非 C 盘目录。助手的视频缓存会保存在所选安装目录内。" />
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="INSTALLFOLDER" Name="PointResizeVideo">
+        <Directory Id="UIFOLDER" Name="ui" />
+        <Component Id="InstallLocation" Guid="5095D087-89A1-4C12-AD75-26F01FB14242" Win64="yes">
+          <RegistryValue Root="HKCU" Key="Software\PointResize\VideoHelper" Name="InstallLocation"
+                         Type="string" Value="[INSTALLFOLDER]" KeyPath="yes" />
+          <RegistryValue Root="HKCU" Key="Software\PointResize\VideoHelper" Name="ProductCode"
+                         Type="string" Value="[ProductCode]" />
+          <Shortcut Id="UninstallShortcut" Directory="INSTALLFOLDER" Name="卸载点选缩放视频助手"
+                    Target="[#HelperExe]" Arguments="--uninstall" WorkingDirectory="INSTALLFOLDER"
+                    Description="卸载视频助手并清理助手自己的登录、缓存和连接" />
+          <Shortcut Id="ApplicationShortcut" Directory="DesktopFolder" Name="点选缩放"
+                    Target="[#HelperExe]" WorkingDirectory="INSTALLFOLDER" Description="打开点选缩放；浏览器未运行时也可管理视频待看与设置" />
+          <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="点选缩放"
+                    Target="[#HelperExe]" WorkingDirectory="INSTALLFOLDER" Description="点选缩放桌面软件" />
+        </Component>
+      </Directory>
+      <Directory Id="DesktopFolder" Name="Desktop" />
+      <Directory Id="ProgramMenuFolder" Name="Programs" />
+    </Directory>
+    <Feature Id="MainFeature" Title="点选缩放视频助手" Level="1" Absent="disallow">
+      <ComponentRef Id="InstallLocation" />
+      <ComponentGroupRef Id="ApplicationFiles" />
+    </Feature>
+    <!-- Run the installed application as the installing user. No elevated custom
+         action, permission/label change, PowerShell wrapper or browser-profile edit. -->
+    <CustomAction Id="RollbackPrepare" FileKey="HelperExe" ExeCommand="--unregister"
+                  Execute="rollback" Impersonate="yes" Return="ignore" />
+    <CustomAction Id="PrepareProtocol" FileKey="HelperExe" ExeCommand="--install-prepare &quot;[INSTALLSOURCE]&quot;"
+                  Execute="deferred" Impersonate="yes" Return="check" />
+    <CustomAction Id="UnregisterHelper" FileKey="HelperExe" ExeCommand="--uninstall-cleanup"
+                  Execute="deferred" Impersonate="yes" Return="check" />
+    <InstallExecuteSequence>
+      <Custom Action="RejectCDrive" After="CostFinalize"><![CDATA[NOT REMOVE~="ALL" AND INSTALLFOLDER ~<< "C:\"]]></Custom>
+      <Custom Action="UnregisterHelper" Before="RemoveRegistryValues">REMOVE="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
+      <Custom Action="RollbackPrepare" After="InstallFiles">NOT Installed AND NOT REMOVE~="ALL"</Custom>
+      <Custom Action="PrepareProtocol" After="RollbackPrepare">NOT REMOVE~="ALL"</Custom>
+    </InstallExecuteSequence>
+    <UIRef Id="WixUI_InstallDir" />
+    <UIRef Id="WixUI_ErrorProgressText" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="打开点选缩放" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+    <Property Id="WixShellExecTarget" Value="[#HelperExe]" />
+    <CustomAction Id="LaunchApplication" BinaryKey="WixCA" DllEntry="WixShellExec" Impersonate="yes" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+    <UI>
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchApplication">WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed</Publish>
+      <!-- Skip the template license page; do not ask users to accept an invented license. -->
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="InstallDirDlg" Order="2">NOT Installed</Publish>
+      <Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="2">1</Publish>
+    </UI>
+  </Product>
+</Wix>

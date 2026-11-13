@@ -1,0 +1,4 @@
+from pathlib import Path
+p=Path(__file__).with_name('verify-preview-standalone.cjs');s=p.read_text(encoding='utf-8');marker=" await page.keyboard.press('Escape');assert(!await bubble.isVisible());";assert marker in s;s=s.replace(marker,Path(__file__).with_name('zoom-checks-0186.inc').read_text(encoding='utf-8')+'\n'+marker,1)
+marker="check('Re-enabling then closing the panel restores independent hover preview without opening software');";assert marker in s;s=s.replace(marker,marker+"const restoredZoom=await bubble.locator('.hover-image-frame').boundingBox();assert(Math.abs(restoredZoom.width-zoomedFrame.width)<1&&Math.abs(restoredZoom.height-zoomedFrame.height)<1);check('Preview dimensions survive a page reload and checkbox off/on, without opening the software');")
+p.write_text(s,encoding='utf-8');print('Added wheel, next-image, reload and viewport checks')

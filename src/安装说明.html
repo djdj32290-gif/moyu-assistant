@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>摸鱼助手 · 安装说明</title>
+<style>body{margin:0;background:#f3f7f4;color:#293c38;font:15px/1.6 system-ui,"Microsoft YaHei",sans-serif}main{max-width:780px;margin:40px auto;padding:28px;background:#fff;border:1px solid #dce6e1;border-radius:16px}h1{margin:0 0 12px;font-size:28px}h2{font-size:20px;margin-top:28px}a{color:#376859}code{overflow-wrap:anywhere}.version{color:#667873}.path{font-size:12px;color:#667873;overflow-wrap:anywhere}</style></head><body><main>
+<h1>摸鱼助手 <span class="version">0.18.4</span></h1><p>桌面软件管理调整规则和视频待看，浏览器扩展连接你现有的 Chrome / Edge 网页。</p>
+<h2>首次准备与移动</h2><ol><li>完整解压免安装版，运行“摸鱼助手.exe”，不用 MSI。软件自动处理连接登记，失败会提示，不提权或改隔离标记。</li><li>第一步直接选谷歌浏览器或 Edge 后，自动复制管理页地址并打开浏览器与插件目录，同时进入第二步配对等待；若未进入扩展管理页，在浏览器地址栏输入 chrome://extensions/（Edge 为 edge://extensions/）。开启开发者模式，加载随附插件文件夹；拖入无效时用“加载已解压的扩展程序”。</li><li>第二步显示进入配对状态后，在浏览器配对页点“配对并授权”。通信和同步成功后两边亮绿灯，网页弹出“配对成功”，点“确认，关闭当前网页”只关闭配对页；红灯点击插件图标打开配对页，绿灯点击唤出软件。</li><li>移动前关闭浏览器、主面板和视频，移动整个软件文件夹及资料库。到新位置运行，再加载插件并配对，旧规则和列表保留。</li><li>旧插件更新保留原 ID。旧 MSI 版换免安装版，先关闭全部窗口，复制整个原资料库并保留原件，不直接搬动原安装目录。</li></ol><div class="path" id="folder"></div>
+<h2>以后怎么用</h2><p>双击软件文件夹中的“摸鱼助手.exe”即可打开软件。已配对浏览器打开后自动连接，扩展图标也可以唤出同一个窗口。浏览器未连接时只开放设置，导入导出在连接并同步后显示，另外两个标签禁用；关闭软件不会自动重开，也不设置开机启动。</p>
+<p>软件没打开时，扩展仍会自动应用已经保存、启用且授权网站的规则。网页选区和临时草稿继续由扩展负责，按标签页、文档和网址隔离；刷新或导航会撤销旧文档草稿。</p>
+<h2>数据与备份</h2><p>首次迁移先保存恢复快照，再提交到软件目录的“资料库”，不先清空扩展数据。之后软件统一管理规则、截图、隐藏与层级分支、完整待看及已看标记；扩展只保留确认后的缓存，旧 JSON 备份仍可导入。设置中的导入、导出在浏览器连接并同步后显示。</p>
+<h2>视频与窗口</h2><p>点击播放沿用桌面视频小窗。B站使用公开嵌入播放器，不下载、不绕过登录或地区限制；实际解码和进度前进后才标为已看。鼠标移出隐藏暂停、移回恢复、安静观看、换片及独立关闭继续保留。</p><p>主面板使用无边框和真实窗口区域裁剪，保留圆角、相连侧边标签和独立层级块；空隙可点击下层窗口。标题可拖动，窗口可置顶、调整大小并记住位置。</p>
+<h2>移除软件</h2><p>先备份需要的数据，在软件点“清除注册表记录”并确认成功，再从所有浏览器移除插件，关闭浏览器和全部软件窗口，删除整个软件文件夹。文件夹内资料库、软件登录与缓存会一起删除。其他位置的备份、旧副本、ZIP 和快捷方式需自行处理；旧 MSI 版仍需从 Windows 设置单独卸载。</p>
+<p>详细操作见同目录 <a href="使用说明.md">使用说明.md</a>。<a href="demo.html">本地体验页</a>只演示网页操作，使用独立体验数据，不能代替真实连接和播放验证。</p>
+</main><script src="guide.js"></script></body></html>

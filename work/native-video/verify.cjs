@@ -1,0 +1,353 @@
+const fs = require('fs'), path = require('path'), cp = require('child_process'), net = require('net'), http = require('http'), assert = require('assert/strict'), crypto = require('crypto');
+const { chromium } = require('C:/Users/cx/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+const root = path.resolve(__dirname, '../..'), work = __dirname;
+process.env.TEMP = process.env.TMP = path.join(work, 'temp'); fs.mkdirSync(process.env.TEMP, { recursive: true });
+const home = path.join(work, 'helper-under-test-'+Date.now()), extension = path.join(work, 'extension-under-test');
+const report = [], errors = [], sleep = ms => new Promise(r => setTimeout(r, ms));
+const check = (name, details) => { report.push({ name, details }); console.log('PASS', name, details ? JSON.stringify(details) : ''); };
+const sid = cp.execFileSync('powershell.exe', ['-NoProfile', '-Command', '[System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value'], { encoding: 'utf8', windowsHide: true }).trim();
+const common = fs.readFileSync(path.join(root, 'src/video-common.js'), 'utf8'); eval(common);
+const bili = PointResizeVideoData.item({ url: 'https://www.bilibili.com/video/BV1GJ411x7h7', title: 'B站公开视频 · 桌面隐藏验证' });
+const read = name => { try { return JSON.parse(fs.readFileSync(path.join(home, 'test-data', name), 'utf8')); } catch { return null; } };
+async function until(fn, ms = 15000) { const start = Date.now(); while (Date.now() - start < ms) { const result = await fn(); if (result) return result; await sleep(100); } throw Error('Timed out: ' + String(fn)); }
+function pipe() { return new Promise((resolve, reject) => { const s = net.connect('\\\\.\\pipe\\PointResizeVideo-' + sid + '-test'); s.once('connect', () => { s.on('error', () => {}); resolve(s); }); s.once('error', reject); }); }
+function packet(proc, value) { const data = Buffer.from(JSON.stringify(value)), length = Buffer.alloc(4); length.writeUInt32LE(data.length); proc.stdin.write(Buffer.concat([length, data])); }
+const settings = { cwd: home, windowsHide: true, env: { ...process.env, TEMP: process.env.TEMP, TMP: process.env.TMP, POINT_RESIZE_TEST_MODE: '1', POINT_RESIZE_TEST_PORT: '9433' } };
+function jsonLine(s, value) { s.write(JSON.stringify(value) + '\n'); }
+function runPS(script, args = []) { return cp.execFileSync('C:/Users/cx/.cache/codex-runtimes/codex-primary-runtime/dependencies/native/powershell/pwsh.exe', ['-NoProfile', '-File', script, ...args], { windowsHide: true, encoding: 'utf8', env: settings.env }); }
+let helper, secondBridge, socket, browser, context, registered = false, regChromium = false, markerCreated = false, nativeSetupStatus = null;
+const markerKey = 'HKCU\\Software\\PointResize\\VideoHelper.Test';
+const server = http.createServer((req, res) => {
+  if (req.url === '/sample.webm') { res.writeHead(200, { 'Content-Type': 'video/webm' }); return res.end(fs.readFileSync(path.join(root, 'work/video-web/sample.webm'))); }
+  if (req.url === '/cover.png') { res.writeHead(200, { 'Content-Type': 'image/png' }); return res.end(fs.readFileSync(path.join(root, 'src/icons/48.png'))); }
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end('<!doctype html><title>桌面助手独立测试</title><h1>原网页</h1>');
+});
+(async () => {
+try {
+  fs.mkdirSync(home, { recursive: true });
+  for (const f of fs.readdirSync(path.join(root, 'outputs/点选缩放视频助手'))) {
+    if (['data', 'test-data'].includes(f)) continue;
+    fs.cpSync(path.join(root, 'outputs/点选缩放视频助手', f), path.join(home, f), { recursive: true });
+  }
+  await new Promise(r => server.listen(0, '127.0.0.1', r));
+  const sourceURL = `http://127.0.0.1:${server.address().port}/`;
+  const direct = PointResizeVideoData.item({ kind: 'media', mediaUrl: sourceURL + 'sample.webm', title: '本地真实解码视频', cover: sourceURL + 'cover.png' });
+  helper = cp.spawn(path.join(home, 'PointResizeVideo.exe'), ['chrome-extension://' + 'a'.repeat(32) + '/'], settings);
+  helper.on('error', e => errors.push(e.message));
+  const messages = []; let buffer = Buffer.alloc(0);
+  helper.stdout.on('data', d => { buffer = Buffer.concat([buffer, d]); while (buffer.length >= 4 && buffer.length >= 4 + buffer.readUInt32LE(0)) { const n = buffer.readUInt32LE(0); messages.push(JSON.parse(buffer.subarray(4, 4 + n).toString())); buffer = buffer.subarray(4 + n); } });
+  packet(helper, { type: 'play', request: 'standalone', item: bili, items: [bili, direct] });
+  await until(() => messages.some(m => m.type === 'opened'));
+  socket = await pipe(); jsonLine(socket, { type: 'test-cursor', x: 0, y: 0 });
+  browser = await chromium.connectOverCDP('http://127.0.0.1:9433');
+  const page = await until(()=>browser.contexts().flatMap(c=>c.pages()).find(p=>p.url()==='https://point-resize.local/player.html'));
+  page.on('pageerror', e => errors.push(e.message));
+  // WebView2 may omit an already-created OOP iframe from a late CDP attachment.
+  // Read the in-frame HTMLVideoElement telemetry instead; never infer playback
+  // from iframe load or root document status.
+  const media = () => until(() => read('media.json'));
+  const windowState = () => until(() => read('window.json'));
+  async function openTools(videoPage, side = 'right') {
+    if (!socket || socket.destroyed) socket = await pipe();
+    let state = await windowState();
+    jsonLine(socket, { type: 'test-cursor', x: side === 'left' ? state.x + state.resizeGrip + 15 : state.x + state.width - state.resizeGrip - 15, y: state.y + Math.floor(state.height / 2) });
+    await until(() => read('window.json')?.visible);
+    await videoPage.mouse.move(1, 1); await videoPage.locator(side === 'left' ? '#tools-left' : '#tools-toggle').hover();
+    await until(() => read('window.json')?.controlsReady && read('window.json')?.controlsVisible);
+    const controls = await until(() => browser.contexts().flatMap(c => c.pages()).find(p => p.url().endsWith('/player.html#controls')));
+    state = await windowState(); jsonLine(socket, { type: 'test-cursor', x: state.controlsX + 20, y: state.controlsY + 20 });
+    await controls.locator('#title-expanded').waitFor();
+    return controls;
+  }
+  await until(async () => { const m = await media(); return m?.width > 0 && m.time > 1 && !m.paused; }, 30000);
+  const start = await media(); await until(async () => (await media()).time > start.time + .5); const later = await media();
+  check('Public Bili embedded player really decodes and advances without another Play click', later);
+  const state = await until(() => read('window.json'));
+  assert.equal(state.armed, false); assert.equal(state.hidden, false);
+  check('Initial cursor outside does not hide the new player');
+  const videoLayout = await page.evaluate(() => { const r = document.getElementById('screen').getBoundingClientRect(); return { width: r.width, height: r.height, viewportWidth: innerWidth, viewportHeight: innerHeight, toolsHidden: document.getElementById('tools').hidden }; });
+  assert.equal(videoLayout.width, videoLayout.viewportWidth); assert.equal(videoLayout.height, videoLayout.viewportHeight); assert.equal(videoLayout.toolsHidden, true);
+  await page.screenshot({ path: path.join(root, 'outputs/桌面视频小窗纯视频验证.png') });
+  assert.equal(await page.locator('.video-tools-toggle:visible').count(), 2); assert.equal(await page.locator('#move').isVisible(), true);
+  assert.equal(await page.locator('#video-next').isVisible(), true); assert.equal(await page.locator('#video-close').isVisible(), true);
+  assert.deepEqual(await page.locator('#video-top button').evaluateAll(nodes => nodes.map(n => n.id)), ['quiet', 'move', 'video-next', 'video-close']);
+  assert(videoLayout.viewportWidth >= 450, 'Default player must preserve logical width at the current monitor DPI');
+  check('Video fills its own window with both side arrows, a Move entry and no bottom control bar', videoLayout);
+  const inside = { type: 'test-cursor', x: state.x + 30, y: state.y + 30 }, outside = { type: 'test-cursor', x: 0, y: 0 };
+  jsonLine(socket, inside); await until(() => read('window.json')?.armed);
+  jsonLine(socket, outside); await until(() => read('window.json')?.hidden);
+  await until(async () => (await media()).paused); const paused = await media(); await sleep(1200); assert(Math.abs((await media()).time - paused.time) < .1); assert.equal((await windowState()).visible, false); assert.equal((await windowState()).nativeVisible, false);
+  check('Moving out pauses actual Bili media and hides the native window', paused);
+  jsonLine(socket, inside); await until(() => read('window.json')?.visible && !read('window.json')?.hidden);
+  await until(async () => !(await media()).paused && (await media()).time > paused.time + .3);
+  check('Moving back restores native window and resumes real Bili progress', await media());
+  assert.equal((await windowState()).restorePreservedFocus, true); check('Restoring uses a native show operation without changing foreground focus');
+  const nearEdge = await windowState(); assert.equal(nearEdge.hoverMargin, 0); const leaveStarted = Date.now();
+  jsonLine(socket, { type: 'test-cursor', x: nearEdge.x - 2, y: nearEdge.y + 30 });
+  await until(() => read('window.json')?.hidden); const hideDelay = Date.now() - leaveStarted; assert(hideDelay < 350, 'Artificial exit delay remains: ' + hideDelay);
+  await until(async () => (await media()).paused); jsonLine(socket, inside); await until(() => read('window.json')?.visible); await until(async () => !(await media()).paused);
+  check('Leaving the actual edge hides immediately without an outer margin or intentional delay, and pauses real media', { observedHideDelayMs: hideDelay });
+  jsonLine(socket, { type: 'test-resize', active: true }); jsonLine(socket, outside);
+  await until(() => read('window.json')?.resizing); await sleep(900); assert.equal((await windowState()).visible, true); assert.equal((await media()).paused, false);
+  jsonLine(socket, { type: 'test-resize', active: false }); await until(() => read('window.json')?.resizing === false);
+  await until(() => read('window.json')?.hidden); jsonLine(socket, inside); await until(() => read('window.json')?.visible); await until(async () => !(await media()).paused);
+  check('Sizing messages protect the video throughout resizing; release outside hides without the old grace period');
+  jsonLine(socket, { type: 'test-pause' }); await until(async () => (await media()).paused);
+  jsonLine(socket, outside); await until(() => read('window.json')?.hidden); jsonLine(socket, inside); await until(() => read('window.json')?.visible); await sleep(700); assert.equal((await media()).paused, true);
+  check('A manually paused video stays paused after hide and restore');
+  const beforeTools = await windowState(); let controls = await openTools(page); const afterTools = await windowState();
+  assert.equal(afterTools.width, beforeTools.width); assert.equal(afterTools.height, beforeTools.height);
+  assert(afterTools.controlsX + afterTools.controlsWidth <= afterTools.x || afterTools.controlsX >= afterTools.x + afterTools.width);
+  await controls.screenshot({ path: path.join(root, 'outputs/桌面视频小窗控制区验证.png') });
+  check('Hovering the side arrow opens a separate owned control window without changing video dimensions');
+  const joined = await windowState();
+  jsonLine(socket, { type: 'test-cursor', x: joined.controlsX < joined.x ? Math.floor((joined.controlsX + joined.controlsWidth + joined.x) / 2) : Math.floor((joined.x + joined.width + joined.controlsX) / 2), y: Math.max(joined.y, joined.controlsY) + 30 });
+  await sleep(200); assert.equal((await windowState()).visible, true);
+  jsonLine(socket, { type: 'test-cursor', x: joined.controlsX + 20, y: joined.controlsY + 20 });
+  check('The narrow connector between the video and side controls remains traversable without hiding');
+  assert.equal(await controls.locator('#queue-section').isVisible(), true); assert.equal(await controls.locator('#list').count(), 0);
+  assert.equal(await controls.locator('#queue .row').count(), 2);
+  await controls.locator('#queue img').waitFor(); await controls.waitForFunction(() => document.querySelector('#queue img')?.naturalWidth > 0);
+  assert.equal((await windowState()).height, beforeTools.height);
+  await controls.screenshot({ path: path.join(root, 'outputs/桌面视频小窗列表验证.png') });
+  check('Separate playlist uses cover, title, source and active state cards, with a placeholder for missing art');
+  await controls.locator('#queue img').evaluate((img, url) => { img.src = url; }, sourceURL + 'broken-cover.png');
+  await until(async () => await controls.locator('#queue img').count() === 0);
+  jsonLine(socket, { type: 'queue', items: [bili, direct] }); await controls.waitForFunction(() => document.querySelector('#queue img')?.naturalWidth > 0);
+  check('Broken cover images fall back to placeholders and live queue updates restore the cards');
+  jsonLine(socket, inside); await until(() => read('window.json')?.controlsVisible === false); assert.equal((await windowState()).visible, true);
+  check('Leaving the control area collapses it while the video window remains visible');
+  await page.locator('#tools-toggle').focus(); await page.locator('#tools-toggle').press('Enter'); await until(() => read('window.json')?.controlsVisible);
+  await controls.locator('#title-expanded').waitFor(); await controls.locator('#title-expanded').press('Escape'); await until(() => read('window.json')?.controlsVisible === false);
+  check('The side controls can also be opened by keyboard and dismissed with Escape');
+  controls = await openTools(page, 'left'); assert.equal((await windowState()).controlsVisible, true);
+  const beforeTopMove = await windowState(); await page.locator('#move').press('ArrowLeft'); await until(() => read('window.json')?.x === beforeTopMove.x - 10);
+  check('Left arrow opens the same separate default-expanded list, and the top Move entry moves the video window');
+  controls = await openTools(page);
+  const pid = (await windowState()).pid;
+  await page.locator('#video-next').click(); await page.locator('#screen>video').waitFor();
+  await page.waitForFunction(() => { const v = document.querySelector('#screen>video'); return v.videoWidth > 0 && v.currentTime > .1 && !v.paused; });
+  assert.equal((await windowState()).pid, pid); check('Top Next reuses the same native player with real direct media');
+  await page.locator('#screen>video').evaluate(v => { v.loop = true; });
+  jsonLine(socket, inside); const quietEntry = await page.locator('#quiet').boundingBox(); await page.mouse.move(quietEntry.x + quietEntry.width / 2, quietEntry.y + quietEntry.height / 2); await page.waitForFunction(() => document.body.classList.contains('quiet'));
+  await until(() => read('window.json')?.controlsVisible === false);
+  assert.equal(await page.locator('#tools-toggle').isVisible(), false); assert.equal(await page.locator('#tools-left').isVisible(), false);
+  assert.equal(await page.locator('#video-next').isVisible(), false); assert.equal(await page.locator('#video-close').isVisible(), false);
+  assert.equal(await page.locator('#quiet-screen').evaluate(el => getComputedStyle(el).cursor), 'none');
+  const quietTime = await page.locator('video').evaluate(v => v.currentTime); await page.waitForFunction(t => document.querySelector('video').currentTime > t + .3 && !document.querySelector('video').paused, quietTime);
+  await page.screenshot({ path: path.join(root, 'outputs/桌面视频安静观看验证.png') });
+  await page.mouse.move(100, 100); await page.waitForFunction(() => !document.body.classList.contains('quiet'));
+  assert.equal(await page.locator('#move').isVisible(), true); assert.equal(await page.locator('video').evaluate(v => v.controls), true);
+  await page.locator('#quiet').focus(); await page.locator('#quiet').press('Enter'); await page.waitForFunction(() => document.body.classList.contains('quiet'));
+  await page.keyboard.press('Escape'); await page.waitForFunction(() => !document.body.classList.contains('quiet'));
+  check('Quiet viewing hides both arrows, top buttons and the in-video cursor while real playback advances; mouse movement or Escape restores controls');
+  jsonLine(socket, inside); await until(() => read('window.json')?.armed);
+  jsonLine(socket, outside); await until(() => read('window.json')?.hidden);
+  secondBridge = cp.spawn(path.join(home, 'PointResizeVideo.exe'), ['chrome-extension://' + 'b'.repeat(32) + '/'], settings);
+  secondBridge.stdout.on('data', () => {});
+  packet(secondBridge, { type: 'play', request: 'second-bridge', item: direct, items: [direct, bili] });
+  await until(() => read('window.json')?.visible && !read('window.json')?.hidden);
+  await page.waitForFunction(() => { const v = document.querySelector('#screen>video'); return v?.videoWidth > 0 && !v.paused && v.currentTime > 0; });
+  assert.equal((await windowState()).pid, pid); check('Another native connection can replace a hidden video without leaving the new video hover-paused');
+  await page.locator('#screen>video').evaluate(v => { v.loop = true; });
+  controls = await openTools(page); await controls.locator('#hover').uncheck(); jsonLine(socket, outside); await sleep(600); assert.equal((await windowState()).hidden, false);
+  check('Auto-hide can be disabled while the pointer remains outside');
+  controls = await openTools(page); await controls.locator('#pin').uncheck(); await until(() => read('window.json')?.topmost === false);
+  await controls.locator('#pin').check(); await until(() => read('window.json')?.topmost === true); check('Pin switch changes native always-on-top state');
+  const beforeMove = await windowState(); await page.locator('#move').press('ArrowLeft'); await until(() => read('window.json')?.x === beforeMove.x - 10); check('Top Move retains keyboard movement after the sidebar heading is removed');
+  // Collapse queue before exercising the smallest supported desktop size.
+  await controls.locator('#title-collapsed').click(); jsonLine(socket, { type: 'test-size', width: 380, height: 270 });
+  await until(() => read('window.json')?.width === 380 && read('window.json')?.height === 270);
+  controls = await openTools(page);
+  const layout = await controls.evaluate(() => [...document.querySelectorAll('#title-mode button,#preferences label')].map(el => { const r = el.getBoundingClientRect(); return { text: el.textContent, right: r.right, bottom: r.bottom, fits: r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight }; }));
+  assert(layout.every(r => r.fits), JSON.stringify(layout)); await page.screenshot({ path: path.join(root, 'outputs/桌面视频小窗窄窗验证.png') }); check('Separate controls remain visible while the video is resized to native 380×270', layout);
+  jsonLine(socket, { type: 'test-size', width: 480, height: 370 }); await until(() => read('window.json')?.width === 480);
+  await page.screenshot({ path: path.join(root, 'outputs/桌面视频小窗播放验证.png') });
+  controls = await openTools(page); await page.locator('#video-close').click(); await until(() => helper.exitCode !== null && secondBridge.exitCode !== null); assert.equal(helper.exitCode, 0); assert.equal(secondBridge.exitCode, 0);
+  await until(() => { try { process.kill(pid, 0); return false; } catch { return true; } });
+  check('Closing native window exits both player and native messaging bridge');
+  const savedPosition = JSON.parse(fs.readFileSync(path.join(home, 'test-data/window-position.json'), 'utf8'));
+  socket.destroy(); socket = null; await browser.close(); browser = null;
+  // Real extension + registered dedicated test host. Never register the user's production host.
+  fs.mkdirSync(extension, { recursive: true });
+  for (const f of fs.readdirSync(path.join(root, 'outputs/点选缩放'))) fs.cpSync(path.join(root, 'outputs/点选缩放', f), path.join(extension, f), { recursive: true });
+  const manifest = JSON.parse(fs.readFileSync(path.join(extension, 'manifest.json'))); manifest.host_permissions = ['http://127.0.0.1/*']; fs.writeFileSync(path.join(extension, 'manifest.json'), JSON.stringify(manifest));
+  const nativeFile = path.join(extension, 'video-native.js'); fs.writeFileSync(nativeFile, fs.readFileSync(nativeFile, 'utf8').replace('"com.pointresize.video"', '"com.pointresize.video.test"'));
+  fs.writeFileSync(nativeFile, fs.readFileSync(nativeFile, 'utf8').replace('"pointresize-video"', '"pointresize-video-test"'));
+  context = await chromium.launchPersistentContext(path.join(work, 'browser-profile-' + Date.now()), { executablePath: 'C:/Users/cx/AppData/Local/ms-playwright/chromium-1234/chrome-win64/chrome.exe', headless: false, env: settings.env, downloadsPath: path.join(work, 'downloads'), args: ['--disable-extensions-except=' + extension, '--load-extension=' + extension, '--no-first-run', '--no-default-browser-check', '--disable-background-networking'] });
+  const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker'); const id = worker.url().split('/')[2];
+ await new Promise(r=>setTimeout(r,500));for(const preparation of context.pages())if(preparation.url().endsWith('/setup.html'))await preparation.close();
+  const tab = context.pages()[0]; await tab.goto(sourceURL);
+  await worker.evaluate(async url => { const [tab] = await chrome.tabs.query({ url }); await openForTab(tab.id); }, sourceURL);
+  const ui = tab.locator('#point-resize-ui'); await ui.locator('#tab-settings').click();
+  assert.equal(await ui.locator('#native-toggle').textContent(), '连接桌面助手');
+  await worker.evaluate(async url => {
+    const [tab] = await chrome.tabs.query({ url });
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => { PointResizeNativeSettings.launch = url => { globalThis.__pointResizeSetupURL = url; }; } });
+  }, sourceURL);
+  await ui.locator('#native-toggle').click(); await until(async () => (await ui.locator('#native-toggle').textContent()).includes('取消等待'));
+  const setupURL = await worker.evaluate(async url => { const [tab] = await chrome.tabs.query({ url }); const [result] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => globalThis.__pointResizeSetupURL }); return result.result; }, sourceURL);
+  assert.equal(setupURL, 'pointresize-video-test://connect?extension=' + id);
+  check('First Connect automatically carries actual extension ID; no manual ID or config file');
+  await ui.locator('#native-toggle').click();
+  const downloading = tab.waitForEvent('download'); await ui.locator('#native-install').click(); const download = await downloading;
+  assert.equal(download.suggestedFilename(), 'PointResizeVideo-' + id + '.msi');
+  const downloaded = path.join(work, 'downloads', download.suggestedFilename()); await download.saveAs(downloaded);
+  const build = JSON.parse(fs.readFileSync(path.join(root, 'work/installer/build-manifest.json')));
+  assert.equal(crypto.createHash('sha256').update(fs.readFileSync(downloaded)).digest('hex'), build.msiSHA256);
+  check('Install button really downloads the bundled MSI with the actual extension ID and exact verified bytes');
+  const probe = await worker.evaluate(() => nativeConnect(videoNativeEpoch, false));
+  assert.equal(probe.connected, false); assert.equal(probe.connectUrl, undefined);
+  assert(await worker.evaluate(async () => (await chrome.storage.local.get('point-resize:desktop-install:v1'))['point-resize:desktop-install:v1'] > Date.now()));
+  assert(await worker.evaluate(async () => !Object.hasOwn(PointResizeBackup.create(await chrome.storage.local.get(null)).data, 'point-resize:desktop-install:v1')));
+  check('Installation wait probes for the host without launching an unregistered protocol or adding download permissions');
+  for (const [name, expected] of [['PointResizeVideo-' + id + '.msi', id], ['PointResizeVideo-' + id + ' (2).msi', id], ['PointResizeVideo-' + 'z'.repeat(32) + '.msi', ''], ['PointResizeVideo.msi', '']]) {
+    const parsed = cp.spawnSync(path.join(home, 'PointResizeVideo.exe'), ['--test-bootstrap', name], { ...settings, encoding: 'utf8' });
+    assert.equal(parsed.status, 0); assert.equal(JSON.parse(parsed.stdout).id, expected);
+  }
+  check('Native bootstrap parses exact-ID and duplicate-number names, rejecting unrelated or generic names');
+  await tab.reload(); await worker.evaluate(async url => { const [tab] = await chrome.tabs.query({ url }); await openForTab(tab.id); }, sourceURL);
+  await ui.locator('#tab-settings').click(); await until(async () => (await ui.locator('#native-toggle').textContent()).includes('取消等待'));
+  check('A page reload resumes the pending automatic connection wait');
+  const prepare = cp.spawnSync(path.join(home, 'PointResizeVideo.exe'), ['--prepare'], settings);
+  const connect = cp.spawnSync(path.join(home, 'PointResizeVideo.exe'), ['--connect', setupURL], settings);
+  if (prepare.status !== 0 || connect.status !== 0 || fs.existsSync(path.join(home,'test-data/connect-callback.json'))) {
+    if(prepare.status!==0){const failure = fs.readFileSync(path.join(home, 'data/last-error.txt'), 'utf8'); assert(failure.includes('UnauthorizedAccessException'), failure);}
+    assert.equal(connect.status,0,'test-mode protocol callback must succeed without writing production registration');assert.equal(JSON.parse(fs.readFileSync(path.join(home,'test-data/connect-callback.json'))).simulated,true);
+    const config = JSON.parse(fs.readFileSync(path.join(home, 'com.pointresize.video.test.json'))); assert(config.allowed_origins.includes('chrome-extension://' + id + '/'));
+    nativeSetupStatus = 'Test-mode protocol callback records registration only; production preparation remains subject to the inherited integrity context. Actual Native Messaging uses a dedicated fixture. No real first registration, install, rollback or uninstall is verified.';
+    console.log('LIMITATION', nativeSetupStatus);
+    runPS(path.join(home, '连接浏览器.ps1'), ['-ExtensionId', id, '-HostName', 'com.pointresize.video.test']);
+    const protocolKey = 'HKCU\\Software\\Classes\\pointresize-video-test';
+    cp.execFileSync('reg.exe', ['add', protocolKey, '/ve', '/t', 'REG_SZ', '/d', 'URL:PointResize Video Helper', '/f'], { windowsHide: true });
+    cp.execFileSync('reg.exe', ['add', protocolKey, '/v', 'URL Protocol', '/t', 'REG_SZ', '/d', '', '/f'], { windowsHide: true });
+    cp.execFileSync('reg.exe', ['add', protocolKey + '\\shell\\open\\command', '/ve', '/t', 'REG_SZ', '/d', '"' + path.join(home, 'PointResizeVideo.exe') + '" --connect "%1"', '/f'], { windowsHide: true });
+  } else throw new Error('Expected a test-mode callback registration plan; production registration is not validated by this fixture.');
+  registered = true;
+  const chromiumKey = 'HKCU\\Software\\Chromium\\NativeMessagingHosts\\com.pointresize.video.test';
+  // Chromium's own namespace, separate from Chrome/Edge; test only.
+  const query = cp.spawnSync('reg.exe', ['query', chromiumKey], { windowsHide: true }); assert.notEqual(query.status, 0, 'test host key unexpectedly exists');
+  cp.execFileSync('reg.exe', ['add', chromiumKey, '/ve', '/t', 'REG_SZ', '/d', path.join(home, 'com.pointresize.video.test.json'), '/f'], { windowsHide: true }); regChromium = true;
+  const mismatch = await worker.evaluate(() => nativeConnect(videoNativeEpoch, false, '0.0.0')); assert.equal(mismatch.connected, false); assert.equal(mismatch.connectUrl, undefined);
+  check('Install-mode probe waits for the requested helper version instead of accepting an older installation');
+  await until(async () => (await ui.locator('#native-toggle').textContent()) === '断开桌面助手');
+  check('Settings detects registered native host and automatically completes the real handshake');
+  assert.equal(await worker.evaluate(async () => (await chrome.storage.local.get('point-resize:desktop-install:v1'))['point-resize:desktop-install:v1']), undefined);
+  check('Host registration completes install-mode connection automatically and clears the pending state');
+  await ui.locator('#native-uninstall').click(); await until(async () => (await ui.locator('#native-status').textContent()).includes('未找到'));
+  assert.equal(await ui.locator('#native-toggle').textContent(), '断开桌面助手');
+  check('Uninstall refuses an unowned or missing MSI identity without disabling the usable connection');
+  assert.notEqual(cp.spawnSync('reg.exe', ['query', markerKey], { windowsHide: true }).status, 0, 'test marker unexpectedly exists');
+  for (const [name, value] of [['InstallLocation', home], ['ProductCode', '{' + build.productCode + '}']]) {
+    cp.execFileSync('reg.exe', ['add', markerKey, '/v', name, '/t', 'REG_SZ', '/d', value, '/f'], { windowsHide: true }); markerCreated = true;
+  }
+  const uninstallLog = path.join(home, 'test-data/uninstall-request.json'); fs.rmSync(uninstallLog, { force: true });
+  await ui.locator('#native-uninstall').click(); await until(() => fs.existsSync(uninstallLog));
+  await until(async () => (await ui.locator('#native-status').textContent()).includes('已请求'));
+  const plan = JSON.parse(fs.readFileSync(uninstallLog));
+  assert.equal(plan.simulated, true); assert.equal(plan.arguments, '/x {' + build.productCode + '} /norestart'); assert(plan.command.endsWith('msiexec.exe'));
+  assert((await ui.locator('#native-status').textContent()).includes('不代表已经卸载完成'));
+  check('Extension Uninstall requests only its exact product and reports a request, using test-mode recording rather than executing Windows uninstall');
+  cp.execFileSync('reg.exe', ['add', markerKey, '/v', 'ProductCode', '/t', 'REG_SZ', '/d', '{00000000-0000-0000-0000-000000000000}', '/f'], { windowsHide: true });
+  const badProduct = await worker.evaluate(() => chrome.runtime.sendNativeMessage(VIDEO_NATIVE_HOST, { type: 'hello' })); assert.equal(badProduct.canUninstall, false);
+  cp.execFileSync('reg.exe', ['add', markerKey, '/v', 'ProductCode', '/t', 'REG_SZ', '/d', '{' + build.productCode + '}', '/f'], { windowsHide: true });
+  cp.execFileSync('reg.exe', ['add', markerKey, '/v', 'InstallLocation', '/t', 'REG_SZ', '/d', home + '-other', '/f'], { windowsHide: true });
+  const badLocation = await worker.evaluate(() => chrome.runtime.sendNativeMessage(VIDEO_NATIVE_HOST, { type: 'hello' })); assert.equal(badLocation.canUninstall, false);
+  check('Native ownership validation rejects both a different product code and a different installed directory');
+  cp.execFileSync('reg.exe', ['delete', markerKey, '/f'], { windowsHide: true }); markerCreated = false;
+  await ui.locator('#native-toggle').click(); await until(async () => (await ui.locator('#native-toggle').textContent()) === '断开桌面助手');
+  await ui.locator('#panel').screenshot({ path: path.join(root, 'outputs/桌面助手连接设置验证.png') });
+  await ui.locator('#native-toggle').click(); await until(async () => (await ui.locator('#native-status').textContent()).includes('已断开'));
+  const disabled = await worker.evaluate(() => nativePlay(PointResizeVideoData.item({ url: 'https://www.bilibili.com/video/BV1GJ411x7h7' })).then(() => false, e => e.message.includes('已断开'))); assert.equal(disabled, true);
+  await worker.evaluate(async url => { const [tab] = await chrome.tabs.query({ url }); await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => { PointResizeNativeSettings.launch = () => { throw Error('Reconnection must not launch protocol again'); }; } }); }, sourceURL);
+  await ui.locator('#native-toggle').click(); await until(async () => (await ui.locator('#native-toggle').textContent()) === '断开桌面助手');
+  check('Disconnect disables new playback and reconnect uses existing registration without another protocol prompt');
+  await worker.evaluate(async ({ url, items }) => {const state=await desktopLibrary({action:'read'});await desktopLibrary({action:'set',revision:state.revision,writes:{[PointResizeVideoData.key]:items}});const [tab] = await chrome.tabs.query({ url }); await openForTab(tab.id); }, { url: sourceURL, items: [bili, direct] });
+  await ui.locator('#tab-videos').click(); const count = await worker.evaluate(() => chrome.tabs.query({}).then(t => t.length));
+  const pickLayout = await ui.locator('#vq-pick').evaluate(el => { const current = el.getRootNode().getElementById('vq-current'), s = getComputedStyle(el); return { beforeCurrent: !!(el.compareDocumentPosition(current) & Node.DOCUMENT_POSITION_FOLLOWING), bg: s.backgroundColor, ink: s.color, font: s.fontSize, radius: s.borderRadius }; });
+  assert.deepEqual(pickLayout, { beforeCurrent: true, bg: 'rgb(55, 104, 89)', ink: 'rgb(255, 255, 255)', font: '12px', radius: '8px' });
+  assert.equal(await ui.locator('#videos-page .vq-note').count(), 1);assert.equal(await ui.locator('#videos-page .vq-note').innerText(),'支持 B站视频页、虎牙直播间页');
+  check('Video picker precedes combined page collection, uses shared dark-green/white buttons, and the only note states supported page types');
+  await ui.locator('.vq-row').first().getByRole('button', { name: '播放', exact: true }).click();
+  await until(async () => {
+    try { browser = await chromium.connectOverCDP('http://127.0.0.1:9433'); return true; } catch { return false; }
+  });
+  socket = await pipe(); jsonLine(socket, outside);
+  const desktop = await until(()=>browser.contexts().flatMap(c=>c.pages()).find(p=>p.url()==='https://point-resize.local/player.html'));
+  await until(() => read('media.json')?.width > 0 && read('media.json').time > 0, 30000);
+  assert.equal(tab.url(), sourceURL); assert.equal(await worker.evaluate(() => chrome.tabs.query({}).then(t => t.length)), count); assert.equal(await ui.locator('#vq-status').textContent(), '');
+  check('Real MV3 one-click Play launches native host; source address and ordinary tab count unchanged');
+  const nativePid = await until(() => read('window.json')?.pid);
+  const restoredPosition = await windowState(); assert.equal(restoredPosition.x, savedPosition.x); assert.equal(restoredPosition.y, savedPosition.y);
+  check('A new player process restores the last moved position after full exit', savedPosition);
+  await until(async () => (await worker.evaluate(key => chrome.storage.local.get(key).then(d => d[key]), PointResizeVideoData.key))[0].watched === true);
+  await until(async () => await ui.locator('.vq-row').first().getAttribute('data-watched') === 'true');
+  let syncedControls = await openTools(desktop);
+  await syncedControls.locator('#queue .row').first().getByRole('button', { name: /^标为未看/ }).click();
+  await until(async () => await ui.locator('.vq-row').first().getAttribute('data-watched') === 'false');
+  await sleep(900); assert.equal(await ui.locator('.vq-row').first().getAttribute('data-watched'), 'false');
+  await ui.locator('.vq-row').first().getByRole('button', { name: /^标为已看/ }).click();
+  await until(async () => await syncedControls.locator('#queue .row').first().getAttribute('data-watched') === 'true');
+  for (const dot of [ui.locator('.vq-row').last().locator('.vq-title .vq-watch'), syncedControls.locator('#queue .row').last().locator('.row-title .watch-state')]) {
+    assert.equal(await dot.isVisible(), true); assert.equal(await dot.textContent(), ''); assert.equal(await dot.getAttribute('aria-label'), '未看');
+    await until(async()=>await dot.evaluate(el=>el.isConnected?getComputedStyle(el).backgroundColor:'')==='rgb(180, 66, 66)');
+  }
+  assert.equal(await ui.locator('.vq-row').first().locator('.vq-watch').isVisible(), false);
+  assert.equal(await syncedControls.locator('#queue .row').first().locator('.watch-state').isVisible(), false);
+  check('Unread videos have a small accessible red dot in both lists; watching or manually marking watched removes it');
+  await syncedControls.screenshot({ path: path.join(root, 'outputs/桌面视频已看同步验证.png') });
+  await ui.locator('#videos-page').screenshot({ path: path.join(root, 'outputs/视频待看已看同步验证.png') });
+  check('Actual Bili progress marks watched; desktop and extension manual watched/unwatched changes sync both ways without immediately overriding manual unread');
+  await ui.locator('#vq-clear-watched').click(); await until(async () => await syncedControls.locator('#queue .row').count() === 1);
+  assert.equal(await ui.locator('.vq-row').first().getAttribute('data-id'), direct.id);
+  await worker.evaluate(async ({key,items})=>{const state=await desktopLibrary({action:'read'});await desktopLibrary({action:'set',revision:state.revision,writes:{[key]:items}});}, { key: PointResizeVideoData.key, items: [{ ...bili, watched: true }, direct] });
+  await until(async () => await syncedControls.locator('#queue .row').count() === 2);
+  await syncedControls.locator('#clear-watched').click(); await until(async () => await ui.locator('.vq-row').count() === 1);
+  assert.equal(await syncedControls.locator('#queue .row').first().getAttribute('data-id'), direct.id);
+  const afterClear = await media(); await until(async () => (await media()).time > afterClear.time + .3 && !(await media()).paused);
+  check('Both Clear watched buttons remove only watched entries, synchronize the other list and leave the current decoded video playing');
+  const broken = PointResizeVideoData.item({ kind: 'media', mediaUrl: sourceURL + 'broken.webm', title: '不可播放来源' });
+  await worker.evaluate(async ({key,items})=>{const state=await desktopLibrary({action:'read'});await desktopLibrary({action:'set',revision:state.revision,writes:{[key]:items}});}, { key: PointResizeVideoData.key, items: [bili, direct, broken] });
+  await worker.evaluate(item => nativePlay(item), broken); await desktop.locator('video').waitFor(); await desktop.waitForFunction(() => !!document.querySelector('video').error);
+  await sleep(1200);
+  const failedItems = await worker.evaluate(key => chrome.storage.local.get(key).then(d => d[key]), PointResizeVideoData.key);
+  assert.equal(failedItems.find(i => i.id === broken.id).watched, false); assert.equal(failedItems.find(i => i.id === direct.id).watched, false);
+  check('An opened but failed video stays unread and old iframe telemetry cannot mark the replacement or unrelated entries');
+  await worker.evaluate(async ({key,items})=>{const state=await desktopLibrary({action:'read'});await desktopLibrary({action:'set',revision:state.revision,writes:{[key]:items}});}, { key: PointResizeVideoData.key, items: [bili, direct] });
+  await worker.evaluate(item => nativePlay(item), bili);
+  await tab.reload(); await tab.goto(sourceURL + 'another'); assert.equal(desktop.isClosed(), false);
+  check('Native video survives refresh and navigation of original webpage');
+  await worker.evaluate(async url => { const [tab] = await chrome.tabs.query({ url }); await openForTab(tab.id); }, tab.url()); await ui.locator('#tab-videos').click();
+  await ui.locator('.vq-row').last().getByRole('button', { name: '播放', exact: true }).click(); await desktop.locator('#screen>video').waitFor(); assert.equal((await windowState()).pid, nativePid);
+  check('Play from another webpage reuses existing desktop window');
+  await worker.evaluate(async () => {const state=await desktopLibrary({action:'read'});await desktopLibrary({action:'set',revision:state.revision,writes:{[PointResizeVideoData.key]:[state.data[PointResizeVideoData.key][0]]}});});
+  const desktopControls = await openTools(desktop); await until(async () => await desktopControls.locator('#queue .row').count() === 1);
+  check('Desktop queue follows canonical library changes without duplicating saved data');
+  await ui.locator('#tab-settings').click(); await ui.locator('#native-toggle').click(); await until(async () => (await ui.locator('#native-status').textContent()).includes('已断开')); await sleep(500);
+  process.kill(nativePid,0);assert.equal(desktop.isClosed(),false);
+  check('Settings Disconnect stops browser commands while the independently running video remains open');
+  jsonLine(socket,{type:'test-close'});await until(()=>{try{process.kill(nativePid,0);return false;}catch{return true;}});
+  await browser.close(); browser = null; socket.destroy(); socket = null;
+  await ui.locator('#native-toggle').click(); await until(async () => (await ui.locator('#native-toggle').textContent()) === '断开桌面助手'); await ui.locator('#tab-videos').click();
+  await ui.locator('.vq-row').first().getByRole('button', { name: '播放', exact: true }).click();
+  await until(async () => { try { browser = await chromium.connectOverCDP('http://127.0.0.1:9433'); return true; } catch { return false; } });
+  const reopened = await until(()=>browser.contexts().flatMap(c=>c.pages()).find(p=>p.url()==='https://point-resize.local/player.html')); await reopened.locator('#video-close').click(); await sleep(500); await browser.close(); browser = null;
+  check('A later Play click starts the desktop player again after full exit');
+  runPS(path.join(home, '解除连接.ps1'), ['-HostName', 'com.pointresize.video.test']); registered = false;
+  cp.execFileSync('reg.exe', ['delete', 'HKCU\\Software\\Chromium\\NativeMessagingHosts\\com.pointresize.video.test', '/f'], { windowsHide: true }); regChromium = false;
+  await ui.locator('.vq-row').first().getByRole('button', { name: '播放', exact: true }).click();
+  await until(async () => (await ui.locator('#vq-status').textContent()).includes('连接桌面助手'));
+  assert.equal(await worker.evaluate(() => chrome.tabs.query({}).then(t => t.length)), count);
+  check('Missing/unregistered helper directs user to Settings Connect without manual ID or fallback tab');
+  assert.deepEqual(errors, []); check('No uncaught player script errors');
+} finally {
+  if (socket) { try { jsonLine(socket, { type: 'test-close' }); } catch {} socket.destroy(); }
+  if (browser) await browser.close().catch(() => {});
+  if (context) await context.close().catch(() => {});
+  if (registered) runPS(path.join(home, '解除连接.ps1'), ['-HostName', 'com.pointresize.video.test']);
+  if (regChromium) cp.execFileSync('reg.exe', ['delete', 'HKCU\\Software\\Chromium\\NativeMessagingHosts\\com.pointresize.video.test', '/f'], { windowsHide: true });
+  if (markerCreated) cp.execFileSync('reg.exe', ['delete', markerKey, '/f'], { windowsHide: true });
+  await new Promise(r => server.close(r));
+  fs.writeFileSync(path.join(work, 'verification.json'), JSON.stringify({ timestamp: new Date().toISOString(), version: JSON.parse(fs.readFileSync(path.join(root, 'src/manifest.json'))).version, binarySHA256: crypto.createHash('sha256').update(fs.readFileSync(path.join(home, 'PointResizeVideo.exe'))).digest('hex'), pointerMethod: 'Injected screen coordinates into the same timer state machine; actual native show/hide, focus and HTMLVideoElement decode/time/paused observations; no desktop mouse movements or user workbook operations.', nativeSetupStatus, report, errors }, null, 2));
+}
+})().catch(e => { console.error(e); process.exitCode = 1; });

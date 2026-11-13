@@ -1,0 +1,19 @@
+<!doctype html><meta charset="utf-8"><title>Nested component comments fixture</title>
+<style>body{margin:24px;background:#f4f4f4;font:16px sans-serif}demo-feed{display:block;width:700px}h1{font-size:20px} .light-copy{font-size:16px}</style>
+<h1>多层组件里的评论</h1><p class="copy light-copy">普通页面同名样式，不应跟着改变。</p><demo-feed></demo-feed>
+<script>
+const feed = document.querySelector('demo-feed').attachShadow({mode:'open'});
+feed.innerHTML = '<style>:host{display:block}demo-thread{display:block;margin:12px 0;padding:18px;background:white;border:1px solid #ddd}</style><div id="threads"></div>';
+window.renderThread = host => {
+  const thread = host.attachShadow({mode:'open'});
+  thread.innerHTML = '<style>:host{display:block}demo-copy{display:block}.media{width:300px;height:140px;margin-top:12px;background:#ddd}.media img{display:block;width:100%;height:100%}</style><demo-copy></demo-copy><div class="media"><img alt="fixture" src="data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'300\' height=\'140\'%3E%3Crect width=\'300\' height=\'140\' fill=\'%23999\'/%3E%3C/svg%3E"></div>';
+  const copy = thread.querySelector('demo-copy').attachShadow({mode:'open'});
+  copy.innerHTML = '<style>p{font:16px/1.8 sans-serif;margin:0}.other{color:#666}</style><p class="copy">这是一条评论，可以单独选中文字。</p><p class="other">这一行保留原始字号。</p>';
+};
+window.addThread = (id, defer = false) => {
+  const host = document.createElement('demo-thread'); host.id = id; feed.getElementById('threads').append(host);
+  if (!defer) window.renderThread(host);
+  return host;
+};
+addThread('first'); addThread('second');
+</script>
